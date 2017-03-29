@@ -1,0 +1,153 @@
+---
+title: Making your R code purrr
+author: Chris Burke
+date: 03-28-2017
+autosize: true
+output: ioslides_presentation
+---
+
+API Data
+---
+<img src="images/json.png">
+<img src="images/Rlogo.png" height="300px" style="float: right;">
+
+Lists
+---
+<img src="images/no-mittens.jpeg" width="600px" height="450px"/>
+
+Solution
+---
+```{r}
+install.packages(c('purrr', 'listviewer'), 
+                 repos = "http://cran.rstudio.com")
+```
+
+Lists!
+---
+<img src="images/mittens.jpeg" width="600px" height="450px"/>
+
+Oops
+---
+```{r}
+library(httr)
+library(magrittr)
+suppressPackageStartupMessages(library(stringr))
+
+github_user <- . %>% {str_interp("https://api.github.com/users/${.}")}
+github_repos <- . %>% {str_interp("https://api.github.com/users/${.}/repos")}
+console_overflow <- github_repos('rstudio') %>% 
+  GET %>%
+  content
+```
+
+Overflow!
+---
+```{r}
+console_overflow
+```
+
+Aha!
+---
+```{r}
+library(listviewer)
+suppressPackageStartupMessages(library(webshot))
+
+list_viewer <- github_repos('rstudio') %>% 
+  GET %>%
+  content %>%
+  # Wait for it
+  jsonedit
+```
+
+Nifty
+---
+```{r}
+list_viewer
+```
+
+List Columns
+---
+```{r}
+suppressPackageStartupMessages(library(dplyr))
+suppressPackageStartupMessages(library(purrr))
+suppressPackageStartupMessages(library(tibble))
+my_tibble <- tibble(
+  name = console_overflow %>% map_chr('name'),
+  listcol = console_overflow
+)
+my_tibble %>% glimpse
+```
+
+
+One By One
+---
+```{r}
+new_tibble <- my_tibble %>%
+  mutate(forks = map_int(listcol, 'forks'))
+new_tibble %>% glimpse
+```
+Picking off columns
+---
+<img src="images/cat-sniper.jpeg" height="400px"/>
+
+Just a DF
+---
+```{r}
+new_tibble <- my_tibble %>%
+  mutate(watchers = map_int(listcol, 'watchers'),
+         contrib_url = map_chr(listcol, 'contributors_url')) %>%
+  select(-listcol)
+new_tibble %>% glimpse
+```
+
+Rate limiting be damned
+---
+```{r}
+suppressPackageStartupMessages(library(tidyr))
+res <- new_tibble %>% 
+  filter(watchers > 200) %>%
+  rowwise %>% 
+  mutate(contributors = contrib_url %>%
+           GET %>%
+           content %>%
+           map_chr('login') %>%
+           str_c(collapse=',')) %>%
+  ungroup %>% 
+  arrange(desc(watchers))
+res %>% select(-watchers)
+```
+
+Rate limiting be damned
+---
+```{r}
+suppressPackageStartupMessages(library(tidyr))
+nested_df <- new_tibble %>% 
+  filter(watchers > 200) %>%
+  rowwise %>% 
+  mutate(contributors = data_frame(
+    contributors = contrib_url %>%
+           GET %>%
+           content %>%
+           map_chr('login')))
+```
+
+Unnesting Rocks
+---
+```{r}
+nested_df %>%
+  unnest %>% 
+  select(-contrib_url) %>%
+  arrange(desc(watchers))
+res %>% select(-watchers)
+```
+
+Resources
+---
+
+- http://r4ds.had.co.nz/
+- https://jennybc.github.io/purrr-tutorial/talks.html
+- https://github.com/tidyverse/purrr
+- https://github.com/timelyportfolio/listviewer
+- https://www.rstudio.com/conference/
+- https://cran.r-project.org/web/packages/tidyjson/vignettes/introduction-to-tidyjson.html
+
